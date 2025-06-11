@@ -1,0 +1,65 @@
+from bs4 import BeautifulSoup
+import requests
+import pandas as pd
+import numpy as np
+import sqlite3
+from datetime import datetime
+url = 'https://web.archive.org/web/20230902185326/https://en.wikipedia.org/wiki/List_of_largest_banks'
+table_attribs = ["Rank", "Bank Name", "Market cap"]
+db_name = 'World_bank.db'
+table_name = 'Countries_by_valueshare'
+csv_path = './Countries_by_valueshare.csv'
+exchange_rate_csv = r"C:\Users\Akash\OneDrive\Desktop\Valkai\exchange_rate.csv"
+def extract(url, table_attribs):
+    page = requests.get(url).text
+    soup = BeautifulSoup(page, 'html.parser')
+    table = soup.find_all('tbody')[0]
+    rows = table.find_all('tr')
+
+    df = pd.DataFrame(columns=table_attribs)
+    for row in rows:
+        cols = row.find_all('td')
+        if len(cols) >= 3:
+            data = {
+                "Rank": cols[0].text.strip(),
+                "Bank Name": cols[1].text.strip(),
+                "Market cap": cols[2].text.strip()
+            }
+            df1 = pd.DataFrame(data, index=[0])
+            df = pd.concat([df, df1], ignore_index=True)
+    return df
+def transform(df, exchange_rate_csv):
+    df["Market cap"] = df["Market cap"].astype(str).str.replace(",", "").astype(float)
+
+    exchange_df = pd.read_csv(exchange_rate_csv)
+    rates = exchange_df.set_index("Currency")["Rate"].to_dict()
+
+    df["MC_GBP_Billion"] = [np.round(x * rates["GBP"], 2) for x in df["Market cap"]]
+    df["MC_EUR_Billion"] = [np.round(x * rates["EUR"], 2) for x in df["Market cap"]]
+    df["MC_INR_Billion"] = [np.round(x * rates["INR"], 2) for x in df["Market cap"]]
+    return dfdef load_to_csv(df, csv_path):
+    df.to_csv(csv_path, index=False)
+def load_to_db(df, sql_connection, table_name):
+    df.to_sql(table_name, sql_connection, if_exists='replace', index=False)
+def run_query(query_statement, sql_connection):
+    result = pd.read_sql(query_statement, sql_connection)
+    print(result)
+def log_progress(message):
+    with open("etl_log.txt", "a") as log:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log.write(f"[{timestamp}] {message}\n")
+log_progress("ETL pipeline started.")
+
+df_raw = extract(url, table_attribs)
+df_transformed = transform(df_raw, exchange_rate_csv)
+
+load_to_csv(df_transformed, csv_path)
+
+conn = sqlite3.connect(db_name)
+load_to_db(df_transformed, conn, table_name)
+
+run_query(f"SELECT AVG(MC_GBP_Billion) FROM {table_name} ORDER BY [MC_EUR_Billion] DESC LIMIT 5", conn)
+
+conn.close()
+log_progress("ETL pipeline completed.")
+
