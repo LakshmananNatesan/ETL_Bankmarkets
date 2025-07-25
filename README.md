@@ -21,9 +21,3 @@ and loads the results into both a CSV file and a SQLite database.
 - CSV & SQLite for storage
 
 ---
-
-## How to Run
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/<your-username>/world-largest-banks-etl.git
-   cd world-largest-banks-etl
